@@ -1,20 +1,17 @@
-#court_list['临江花园', '碧水豪园', '钱塘山水', '钱江湾花园',
-#            '超级星期天', '贺田尚城', '官邸国际', '逸天广场',
-#            '天鸿君邑', '积家', '江畔云庐', '江南文苑', '银爵世纪',
-#            '金盛曼城', '星汇荣邸']
-
-
-#desc-date-block-estate-room-price-lable
+#key-desc-date-block-estate-room-price-lable
 import requests
 from bs4 import BeautifulSoup
 import logging
 import time
+import pymysql
 
 usr_agt = 'User-Agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/51.0.2704.79 Chrome/51.0.2704.79 Safari/537.36'
 hdr = {}
 hdr['User-Agent'] = usr_agt
 
-site_58 = "http://hz.58.com/puyan/zufang/0/pn0"
+addr_body = "http://hz.58.com"
+init_addr = addr_body + "/puyan/zufang/0/pn0"
+record = {}
 
 logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s')
 #logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s', \
@@ -22,6 +19,7 @@ logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %
 
 def funnel_date_block_estate(obj):
     desc = obj.find('a', {'class':'t'}).get_text()
+    record['desc'] = desc
     if desc is None:
         logging.warning("func:funnel_date_block_estate, desc is None!!!")
 
@@ -37,6 +35,7 @@ def funnel_date_block_estate(obj):
         [2] stored date
     '''
     block = renaddr[0].strip()
+    record['block'] = block
     '''
         extract estate from string like:'- estate_name\n/'
         1.split(' ')
@@ -44,6 +43,7 @@ def funnel_date_block_estate(obj):
     '''
     m_estate = renaddr[1].strip().split(' ')
     estate = m_estate[1].strip()[:-4]
+    record['estate'] = estate
     '''
         convert to xxxx-xx-xx
     '''
@@ -52,24 +52,30 @@ def funnel_date_block_estate(obj):
     today = time.strftime('%Y-%02m-%02d',time.localtime(time.time()))
     today_m = today.split('-')
     cur_year = today_m[0]
-    print(m_d)
     if len(m_d) == 1:
         date = today
     if len(m_d) == 2:
         date = cur_year + '-' + date_m 
-    logging.info('desc:%s date:%s block:%s estate:%s' %(desc, date, block, estate))
+    record['date'] = date
+    '''
+        exact lable
+    '''
+    label = obj.find('p', {'class':'qj-rendp'}).label.get_text()[:-1]
+    record['label'] = label
 
 def funnel_room_price(obj):
-    print(obj.find('b', {'class':'pri'}))
-    price = obj.find('b', {'class':'pri'}).get_text()
-    print(obj.find('span', {'class':'showroom'}))
+    obj_m = obj.find('b', {'class':'pri'})
+    if obj_m is None:
+        logging.critical('price is None!!!!')
+        return None
+    price = obj_m.get_text() 
+    record['price'] = price
+
     room = obj.find('span', {'class':'showroom'}).get_text()
-
-    logging.info('price:%s room:%s' %(price, room))
-
-
-
-
+    if room is None:
+        logging.critical('room is None!!!!')
+    record['room'] = room
+    logging.info(record)
 
 def get_obj(site, tmout):
     print("site:%s, tmout:%s" %(site, tmout))
@@ -86,8 +92,8 @@ def get_obj(site, tmout):
 def parse_58(obj):
     bsobj = obj.find('table', {'class':'tbimg'})
     if bsobj is None:
-        print("Can't find table")
-        return
+        logging.critical("Can't find table")
+        return None
     tr_list = bsobj.find_all('tr')
     for item in tr_list:
         if item is None:
@@ -108,27 +114,48 @@ def parse_58(obj):
             continue
         funnel_date_block_estate(td_list[1])
         funnel_room_price(td_list[2])
-#        court = renaddr[1].lstrip()
-#        print(court)
-#        print("hello next")
+        record.clear()
+    return True
 
-#    bsobj = bsobj
-#    print(bsobj)
+def addition_page(obj):
+    obj = obj.body.find('div', {'class':'pager'})
+    if obj is None:
+        print('func:addition_page, obj is None')
+        return None
+    next_tag = obj.find('a', {'class':'next'})['href']
+    if next_tag is None:
+        print('func:addition_page, next_tag is None')
+        return None
 
-#    db_conn()
-#    for child in bsobj.find_all('tr'):
-#        ip = child.td.get_text()
-#        port = child.td.next_sibling.next_sibling.get_text()
-    '''
-        set 'prot' to http manually 
-    '''
-#    prot = 'http'
-#    sql = proxy_insert 
-#    db_update(sql, (ip, port, "NULL", prot, 0))
-#    db_close()
+    next_page = addr_body + next_tag
+    return next_page
+
+def init_pool():
+    conn = pymysql.connect(host='104.128.81.253', user='proxy', passwd='proxy', db='proxydb', charset='utf8')
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM proxy WHERE disconntm = 0")
+    return cur
 
 if __name__ == '__main__':
-    
-    obj = get_obj(site_58, 3)
-    parse_58(obj)
-    #print(obj)
+    cur = init_pool()
+    for item in cur:
+        print(item)
+'''
+    page = init_addr
+    obj = get_obj(init_addr, 3)
+    while obj is not None:
+        res = parse_58(obj)
+        if res is None:
+            logging.critical('func:main, res is None')
+        next_page = addition_page(obj)
+        if next_page is None:
+            logging.critical('func:main, next_page is None')
+            break
+        sleep(1)
+        obj = get_obj(next_page, 3) 
+    logging.info('out of main')
+    exit(0)
+    '''
+
+
