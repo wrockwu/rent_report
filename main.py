@@ -1,4 +1,4 @@
-#key-desc-date-block-estate-room-price-lable
+#key-desc-date-block-estate-room-price-label
 import requests
 from bs4 import BeautifulSoup
 import logging
@@ -6,9 +6,11 @@ import time
 import pymysql
 import random
 
-usr_agt = 'User-Agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/51.0.2704.79 Chrome/51.0.2704.79 Safari/537.36'
+usr_agt = 'User-Agent:Mozilla/5.0 (X11; Linux x86_64)AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/51.0.2704.79 Chrome/51.0.2704.79 Safari/537.36'
+accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
 hdr = {}
 hdr['User-Agent'] = usr_agt
+hdr['Accept'] = accept
 
 addr_body = "http://hz.58.com"
 init_addr = addr_body + "/puyan/chuzu/0/pn0"
@@ -63,7 +65,7 @@ def funnel_date_block_estate(obj):
         date = cur_year + '-' + date_m 
     record['date'] = date
     '''
-        exact lable
+        exact label
     '''
     label = obj.find('p', {'class':'qj-rendp'}).label.get_text()[:-1]
     record['label'] = label
@@ -82,20 +84,19 @@ def funnel_room_price(obj):
     record['room'] = room
 
 def get_obj(site, tmout, proxy):
-    try:
-        r = requests.get(url=site, headers=hdr, proxies=proxy, timeout=tmout)
-        r.raise_for_status()
-    except Exception as err:
-        logging.warning('func:get_obj, site:%s, proxy:%s, reason:%s' %(site, proxy, err))
-        return None
- 
-    bsobj = BeautifulSoup(r.text, 'lxml')
-    return bsobj
+
+    r = requests.get(url=site, headers=hdr, proxies=proxy, timeout=tmout)
+    if r.status_code == requests.codes.ok:
+        bsobj = BeautifulSoup(r.text, 'lxml')
+        return bsobj
+    
+    logging.info('func:get_obj, httperror:%s' %(r.status_code))
+    return None 
 
 def parse_58(obj):
     bsobj = obj.find('table', {'class':'tbimg'})
     if bsobj is None:
-        logging.critical("Can't find table")
+        logging.critical("func:parse_58, Can't find table in html!!!")
         return None
     tr_list = bsobj.find_all('tr')
     for item in tr_list:
@@ -117,7 +118,23 @@ def parse_58(obj):
             continue
         funnel_date_block_estate(td_list[1])
         funnel_room_price(td_list[2])
+        
         logging.info(record)
+
+        conn = pymysql.connect(host='104.128.81.253', user='proxy', passwd='proxy', db='proxydb', charset='utf8')
+        cur = conn.cursor()
+        cur.execute("INSERT IGNORE INTO proxy (desc, date, block, estate, room, price, label) \
+                    VALUES (%s, %s, %s, %s, %s)",
+                    (record['desc'], record['date'], record['block'], record['estate'], record['room'], record['price'], record['label']))
+        
+        for item in cur:
+            pool.append('http://' + item[0] + ':' + item[1])
+       
+        pool_active = check_ip(pool)
+        logging.info(pool_active)
+        cur.close()
+        conn.close()
+
         record.clear()
     return True
 
@@ -138,7 +155,7 @@ def check_ip(pool_list):
     pool_tmp = pool_list
     for each in pool_list:
         proxies['http'] = each
-        obj = get_obj(init_addr, 1, proxies)
+        obj = get_obj(init_addr, 3.01, proxies)
         if obj is None:
             pool_tmp.remove(each)
             logging.info("proxy:%s is unavaluable" %(each))
@@ -155,20 +172,24 @@ def init_pool():
         pool.append('http://' + item[0] + ':' + item[1])
    
     pool_active = check_ip(pool)
+    logging.info(pool_active)
+    cur.close()
+    conn.close()
     return pool_active 
 
 def test():
-    next_page = "http://hz.58.com/puyan/chuzu/0/pn32/"
+    next_page = "http://hz.58.com/puyan/chuzu/0/pn0/"
     
     while True:
         logging.info('current page:%s' %(next_page))
-        proxies['http'] = 'http://182.90.252.10'
+#        proxies['http'] = 'http://218.205.80.4:80'
+        proxies['http'] = None 
 
         '''
             step 1. 
                 get obj, if resault is None, exit.
         '''
-        obj = get_obj(next_page, 1, proxies)
+        obj = get_obj(next_page, None, proxies)
         if obj is None:
             logging.warning('get obj failed')
             exit(0)
@@ -196,6 +217,8 @@ def test():
                 anti-scrapy strategies.
                 sleep
         '''
+        t_sleep = random.randint(1,5)
+#        time.sleep(t_sleep)
         time.sleep(1)
 
 if __name__ == '__main__':
@@ -215,23 +238,24 @@ if __name__ == '__main__':
             logging.info('current page:%s' %(next_page))
             '''
                 step 1. 
-                    get obj, if resault is Nonei, proxy may unavailable.
+                    get obj, if resault is None, proxy may unavailabel.
                     so break while to choose next proxy
             '''
-            obj = get_obj(next_page, 1, proxies)
+            obj = get_obj(next_page, None, proxies)
+            logging.info(obj)
             if obj is None:
-                logging.warning('proxy:%s may unavailable' %(ip))
+                logging.warning('proxy:%s may unavailabel' %(ip))
                 break
             '''
                 step 2.
                     parse obj, exact data.
-                    if res is None, that mean no 'table' tag in html
-                    we should stop scrapy
+                    if res is None, that mean no 'table' tag in html, may 404 error
+                    break, next proxy to try to scrapy                   
             '''
             res = parse_58(obj)
             if res is None:
-                logging.critical('func:main, cant find data in html!')
-                exit(0)
+                logging.critical('func:main, res is None.')
+                break 
             '''
                 step 3.
                     after handle current page, try to find next page. 
@@ -246,11 +270,12 @@ if __name__ == '__main__':
                     anti-scrapy strategies.
                     sleep & change proxy
             '''
-            time.sleep(1)
-            rounds = rounds + 1
-            if rounds > 10:
-                logging.info('rounds meat max:%s, change proxy to against anti-scrapy')
-                break
+            t_sleep = random.randint(1,5)
+            time.sleep(t_sleep)
+#            rounds = rounds + 1
+#            if rounds > 10:
+#                logging.info('rounds meat max:%s, change proxy to against anti-scrapy')
+#                break
 
     logging.critical('out of main')
     exit(0)
