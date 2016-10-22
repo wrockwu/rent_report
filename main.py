@@ -1,4 +1,3 @@
-#key-desc-date-block-estate-room-price-label
 import requests
 from bs4 import BeautifulSoup
 import logging
@@ -13,7 +12,8 @@ hdr['User-Agent'] = usr_agt
 hdr['Accept'] = accept
 
 addr_body = "http://hz.58.com"
-init_addr = addr_body + "/puyan/chuzu/0/pn0"
+#init_addr = addr_body + "/puyan/chuzu/0/pn0"
+init_addr = addr_body + "/puyan/chuzu/0/?final=1&searchtype=3&key=%2525u6C5F%2525u7554%2525u4E91%2525u5E90&sourcetype=5"
 record = {}
 
 proxies = {}
@@ -21,17 +21,32 @@ proxies = {}
 logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s')
 #logging.basicConfig(level=logging.INFO, format=' %(asctime)s - %(levelname)s - %(message)s', \
 #                     filename='rent.log', filemode='w')
+'''
+    database table columns
+    +--------+-------------+------+-----+---------+-------+
+    | Field  | Type        | Null | Key | Default | Extra |
+    +--------+-------------+------+-----+---------+-------+
+    | des    | varchar(50) | NO   | PRI | NULL    |       |
+    | date   | varchar(10) | NO   |     | NULL    |       |
+    | block  | varchar(10) | NO   |     | NULL    |       |
+    | estate | varchar(10) | NO   |     | NULL    |       |
+    | room   | varchar(10) | NO   |     | NULL    |       |
+    | price  | varchar(10) | NO   |     | NULL    |       |
+    | label  | varchar(5)  | YES  |     | NULL    |       |
+    +--------+-------------+------+-----+---------+-------+
+'''
 
 def funnel_date_block_estate(obj):
-    desc = obj.find('a', {'class':'t'}).get_text()
-    record['desc'] = desc
-    if desc is None:
-        logging.warning("func:funnel_date_block_estate, desc is None!!!")
+    des = obj.find('a', {'class':'t'}).get_text()
+    record['des'] = des
+    if des is None:
+        logging.warning("func:funnel_date_block_estate, des is None!!!")
+        return None
 
     bsobj = obj.find('p', {'class':'qj-renaddr'})
     if bsobj is None:
         logging.critical("func:funnel_date_block_estate, bsobj is None!!!")
-        return
+        return None
 
     renaddr = bsobj.get_text().strip().split('\r\n')
     '''
@@ -74,23 +89,27 @@ def funnel_room_price(obj):
     obj_m = obj.find('b', {'class':'pri'})
     if obj_m is None:
         logging.warning('price is None!!!!')
-        return None
+        record['price'] = '0'
+        record['room'] = '0'
+        return
     price = obj_m.get_text() 
     record['price'] = price
 
     room = obj.find('span', {'class':'showroom'}).get_text()
     if room is None:
         logging.warning('room is None!!!!')
+        record['room'] = '0'
     record['room'] = room
+
 
 def get_obj(site, tmout, proxy):
 
-    r = requests.get(url=site, headers=hdr, proxies=proxy, timeout=tmout)
-    if r.status_code == requests.codes.ok:
-        bsobj = BeautifulSoup(r.text, 'lxml')
-        return bsobj
+    try:
+        r = requests.get(url=site, headers=hdr, proxies=proxy, timeout=tmout)
+        r.raise_for_status()
+    except Exception as err: 
+        logging.info('func:get_obj, httperror:%s' %(err))
     
-    logging.info('func:get_obj, httperror:%s' %(r.status_code))
     return None 
 
 def parse_58(obj):
@@ -106,7 +125,7 @@ def parse_58(obj):
        
         '''
             td_list[0]:don't care
-            td_list[1]:desc date block estate
+            td_list[1]:des date block estate
             td_list[2]:room price label 
         '''
         td_list = item.find_all('td')
@@ -121,17 +140,12 @@ def parse_58(obj):
         
         logging.info(record)
 
-        conn = pymysql.connect(host='104.128.81.253', user='proxy', passwd='proxy', db='proxydb', charset='utf8')
+        conn = pymysql.connect(host='localhost', user='proxy', passwd='proxy', db='proxydb', charset='utf8')
         cur = conn.cursor()
-        cur.execute("INSERT IGNORE INTO proxy (desc, date, block, estate, room, price, label) \
-                    VALUES (%s, %s, %s, %s, %s)",
-                    (record['desc'], record['date'], record['block'], record['estate'], record['room'], record['price'], record['label']))
-        
-        for item in cur:
-            pool.append('http://' + item[0] + ':' + item[1])
-       
-        pool_active = check_ip(pool)
-        logging.info(pool_active)
+        cur.execute("INSERT IGNORE INTO 58rent (des, date, block, estate, room, price, label) \
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (record['des'], record['date'], record['block'], record['estate'], record['room'], record['price'], record['label']))
+        conn.commit()
         cur.close()
         conn.close()
 
@@ -155,10 +169,12 @@ def check_ip(pool_list):
     pool_tmp = pool_list
     for each in pool_list:
         proxies['http'] = each
+        logging.info('test ip activity:%s' %(each))
         obj = get_obj(init_addr, 3.01, proxies)
         if obj is None:
             pool_tmp.remove(each)
             logging.info("proxy:%s is unavaluable" %(each))
+    logging.info('ip pool:%s' %(pool_tmp))
     return pool_tmp
 
 def init_pool():
@@ -201,7 +217,7 @@ def test():
         '''
         res = parse_58(obj)
         if res is None:
-            logging.critcal('func:main, cant find data in html!')
+            logging.critical('func:main, cant find data in html!')
             exit(0)
         '''
             step 3.
@@ -218,13 +234,13 @@ def test():
                 sleep
         '''
         t_sleep = random.randint(1,5)
-#        time.sleep(t_sleep)
-        time.sleep(1)
+        time.sleep(t_sleep)
+#        time.sleep(1)
 
 if __name__ == '__main__':
-#    ip_pool = init_pool()
-    ip_pool = []
-    test()
+    ip_pool = init_pool()
+#    ip_pool = []
+#    test()
     
     '''
         choose a ip from proxy pool
