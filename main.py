@@ -4,6 +4,8 @@ import logging
 import time
 import pymysql
 import random
+import sys
+import getopt
 
 usr_agt = 'User-Agent:Mozilla/5.0 (X11; Linux x86_64)AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/51.0.2704.79 Chrome/51.0.2704.79 Safari/537.36'
 accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
@@ -12,8 +14,7 @@ hdr['User-Agent'] = usr_agt
 hdr['Accept'] = accept
 
 addr_body = "http://hz.58.com"
-#init_addr = addr_body + "/puyan/chuzu/0/pn0"
-init_addr = addr_body + "/puyan/chuzu/0/?final=1&searchtype=3&key=%2525u6C5F%2525u7554%2525u4E91%2525u5E90&sourcetype=5"
+def_start_page = addr_body + "/puyan/chuzu/0/pn0"
 record = {}
 
 proxies = {}
@@ -83,6 +84,8 @@ def funnel_date_block_estate(obj):
         exact label
     '''
     label = obj.find('p', {'class':'qj-rendp'}).label.get_text()[:-1]
+    label = label + '-' + obj.find('p', {'class':'qj-rendp'}).a.get_text()
+    logging.info('label:%s', label)
     record['label'] = label
 
 def funnel_room_price(obj):
@@ -109,8 +112,10 @@ def get_obj(site, tmout, proxy):
         r.raise_for_status()
     except Exception as err: 
         logging.info('func:get_obj, httperror:%s' %(err))
-    
-    return None 
+        return None 
+  
+    bsobj = BeautifulSoup(r.text, 'lxml')
+    return bsobj
 
 def parse_58(obj):
     bsobj = obj.find('table', {'class':'tbimg'})
@@ -134,6 +139,9 @@ def parse_58(obj):
         '''
         if not td_list:
             logging.critical("func:funnel_date_block_estate, td_list is None!!!")
+            continue
+        if len(td_list) < 3:
+            logging.critical("func:funnel_date_block_estate, td_list is to short!, it may other item!!!")
             continue
         funnel_date_block_estate(td_list[1])
         funnel_room_price(td_list[2])
@@ -170,7 +178,7 @@ def check_ip(pool_list):
     for each in pool_list:
         proxies['http'] = each
         logging.info('test ip activity:%s' %(each))
-        obj = get_obj(init_addr, 3.01, proxies)
+        obj = get_obj('http://www.baidu.com', 3.01, proxies)
         if obj is None:
             pool_tmp.remove(each)
             logging.info("proxy:%s is unavaluable" %(each))
@@ -237,28 +245,22 @@ def test():
         time.sleep(t_sleep)
 #        time.sleep(1)
 
-if __name__ == '__main__':
-    ip_pool = init_pool()
-#    ip_pool = []
-#    test()
-    
-    '''
-        choose a ip from proxy pool
-    '''
-    next_page = init_addr
+def main_loop(start_page, ip_pool):
+
+    next_page = start_page
+
     for ip in ip_pool:
         proxies['http'] = ip
         rounds = 0
 
         while True:
-            logging.info('current page:%s' %(next_page))
+            logging.info('proxies:%s page:%s' %(proxies, next_page))
             '''
                 step 1. 
                     get obj, if resault is None, proxy may unavailabel.
                     so break while to choose next proxy
             '''
-            obj = get_obj(next_page, None, proxies)
-            logging.info(obj)
+            obj = get_obj(next_page, 2, proxies)
             if obj is None:
                 logging.warning('proxy:%s may unavailabel' %(ip))
                 break
@@ -280,7 +282,7 @@ if __name__ == '__main__':
             next_page = addition_page(obj)
             if next_page is None:
                 logging.critical('func:main, next_page is None')
-                exit(0)
+                return None 
             '''
                 step 4.
                     anti-scrapy strategies.
@@ -288,10 +290,28 @@ if __name__ == '__main__':
             '''
             t_sleep = random.randint(1,5)
             time.sleep(t_sleep)
-#            rounds = rounds + 1
-#            if rounds > 10:
-#                logging.info('rounds meat max:%s, change proxy to against anti-scrapy')
-#                break
+
+    return True
+#
+
+if __name__ == '__main__':
+    opts, args = getopt.getopt(sys.argv[1:], 'hpt', ['help', 'permanent', 'test',\
+                                                    'sp='])
+   
+    start_page = def_start_page 
+    for op,va in opts:
+        if op in ['--sp']:
+            start_page = va
+
+    logging.info('start page:%s'%(start_page))
+    for op,va in opts:      
+        if op in ['-h', '--help']:
+            print('unkonow')
+        elif op in ['-p', '--permanent']:
+            ip_pool = init_pool()
+            main_loop(start_page, ip_pool)
+        elif op in ['-t', '--test']:
+            test()
 
     logging.critical('out of main')
-    exit(0)
+    sys.exit(0)
