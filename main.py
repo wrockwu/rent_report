@@ -6,6 +6,8 @@ import pymysql
 import random
 import sys
 import getopt
+import datetime
+import os
 
 usr_agt = 'User-Agent:Mozilla/5.0 (X11; Linux x86_64)AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/51.0.2704.79 Chrome/51.0.2704.79 Safari/537.36'
 accept = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
@@ -295,6 +297,9 @@ def main_loop(start_page, ip_pool):
 #
 
 if __name__ == '__main__':
+    os.environ['TZ'] = 'PRC'
+    time.tzset()
+    run_back = False
     opts, args = getopt.getopt(sys.argv[1:], 'hpt', ['help', 'permanent', 'test',\
                                                     'sp='])
    
@@ -308,10 +313,20 @@ if __name__ == '__main__':
         if op in ['-h', '--help']:
             print('unkonow')
         elif op in ['-p', '--permanent']:
-            ip_pool = init_pool()
-            main_loop(start_page, ip_pool)
+            run_back = True
         elif op in ['-t', '--test']:
             test()
 
+        while run_back is True:
+            if (time.localtime().tm_hour > 0) and (time.localtime().tm_hour < 7):
+                need_sleep = 7*60*60 - ((time.localtime.tm_hour*60*60) + (time.localtime.tm_min*60) + (time.localtime.tm_sec))
+                time.sleep(need_sleep)
+            else: 
+                ip_pool = init_pool()
+                main_loop(start_page, ip_pool)
+
+                need_sleep = 30*60
+                time.sleep(need_sleep)
+ 
     logging.critical('out of main')
     sys.exit(0)
