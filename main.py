@@ -319,13 +319,17 @@ if __name__ == '__main__':
 
         while run_back is True:
             if (time.localtime().tm_hour > 0) and (time.localtime().tm_hour < 7):
-                need_sleep = 7*60*60 - ((time.localtime.tm_hour*60*60) + (time.localtime.tm_min*60) + (time.localtime.tm_sec))
+                need_sleep = 7*60*60 - (time.localtime().tm_hour*60*60 + time.localtime().tm_min*60 + time.localtime().tm_sec)
                 time.sleep(need_sleep)
             else: 
                 ip_pool = init_pool()
                 main_loop(start_page, ip_pool)
 
-                need_sleep = 30*60
+                curr_sec = (time.localtime().tm_min*60 + time.localtime().tm_sec)
+                if curr_sec > 30*60:
+                    need_sleep = 2*30*60 - curr_sec
+                else:
+                    need_sleep = 30*60 - curr_sec
                 time.sleep(need_sleep)
  
     logging.critical('out of main')
