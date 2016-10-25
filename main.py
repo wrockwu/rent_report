@@ -104,6 +104,7 @@ def funnel_room_price(obj):
     if room is None:
         logging.warning('room is None!!!!')
         record['room'] = '0'
+        return
     record['room'] = room
 
 
