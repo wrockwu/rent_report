@@ -46,6 +46,13 @@ def funnel_date_block_estate(obj):
         logging.warning("func:funnel_date_block_estate, des is None!!!")
         return None
 
+    if (des.find('主卧') != -1):
+        record['room'] = '1-1'
+    elif (des.find('次卧') != -1):
+        record['room'] = '1-2'
+    elif (des.find('单间') != -1):
+        record['room'] = '1-0'
+
     bsobj = obj.find('p', {'class':'qj-renaddr'})
     if bsobj is None:
         logging.critical("func:funnel_date_block_estate, bsobj is None!!!")
@@ -100,10 +107,30 @@ def funnel_room_price(obj):
     price = obj_m.get_text() 
     record['price'] = price
 
+    if record.get('room') is not None:
+        return
+
     room = obj.find('span', {'class':'showroom'}).get_text()
     if room is None:
         logging.warning('room is None!!!!')
         record['room'] = '0'
+        return
+
+    if (room.find('主卧') != -1):
+        record['room'] = '1-1'
+        return
+    elif (room.find('次卧') != -1):
+        record['room'] = '1-2'
+        return
+    '''
+        x室x厅x卫
+    '''
+    if (room.find('两')) != -1:
+        record['room'] = '2'
+        return
+    elif (room.find('室')) != -1:
+        pos = room.find('室')
+        record['room'] = room[:pos]
         return
     record['room'] = room
 
@@ -156,7 +183,7 @@ def parse_58(obj):
         cur.execute("INSERT IGNORE INTO 58rent (des, date, block, estate, room, price, label) \
                     VALUES (%s, %s, %s, %s, %s, %s, %s)",
                     (record['des'], record['date'], record['block'], record['estate'], record['room'], record['price'], record['label']))
-        conn.commit()
+#        conn.commit()
         cur.close()
         conn.close()
 
