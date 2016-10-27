@@ -52,6 +52,11 @@ def funnel_date_block_estate(obj):
         record['room'] = '1-2'
     elif (des.find('单间') != -1):
         record['room'] = '1-0'
+    elif (des.find('隔断') != -1):
+        record['room'] = '1-0'
+    elif (des.find('床位') != -1):
+        record['room'] = '1-0'
+
 
     bsobj = obj.find('p', {'class':'qj-renaddr'})
     if bsobj is None:
