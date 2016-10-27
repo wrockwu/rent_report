@@ -183,7 +183,7 @@ def parse_58(obj):
         cur.execute("INSERT IGNORE INTO 58rent (des, date, block, estate, room, price, label) \
                     VALUES (%s, %s, %s, %s, %s, %s, %s)",
                     (record['des'], record['date'], record['block'], record['estate'], record['room'], record['price'], record['label']))
-#        conn.commit()
+        conn.commit()
         cur.close()
         conn.close()
 
